@@ -573,12 +573,21 @@ fi
 
 say "   Installed, ${WARNINGS} warning(s). Full log: ${LOG}"
 say ""
-say "   Nothing is running yet and no data has been restored. In order:"
+say "   Nothing is running yet. In order:"
 say ""
-say "     1. restore the data     sh hajime-migrate/restore_data.sh <backup-dir>"
-say "     2. check the machine    hajimectl check"
-say "     3. bring services up    hajimectl start"
-say "     4. reboot, so the tunables load and you learn now whether it"
+# The migration tooling is a separate concern from installing, and it is not
+# part of a fresh install at all. Printing a command for a directory that is
+# not here sends the reader looking for a file that was never shipped.
+STEP=1
+if [ -d "${HERE}/hajime-migrate" ]; then
+    say "     ${STEP}. restore the data     sh hajime-migrate/restore_data.sh <backup-dir>"
+    STEP=$((STEP + 1))
+fi
+say "     ${STEP}. check the machine    hajimectl check"
+STEP=$((STEP + 1))
+say "     ${STEP}. bring services up    hajimectl start"
+STEP=$((STEP + 1))
+say "     ${STEP}. reboot, so the tunables load and you learn now whether it"
 say "        comes back clean rather than during the next power cut"
 say ""
 say "   Two more layers, both separate and both optional. Neither is needed to"

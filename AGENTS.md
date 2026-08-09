@@ -22,8 +22,11 @@ The corollary: never wrap a failure in `|| true` to keep the output green.
 
 ## Language
 
-Prose in this repository is Arabic. `README.md`, `STATUS.md`, `decisions.md`
-and every component README are Arabic and stay Arabic.
+This project is written in Arabic and released in both. `README.md` is English
+because that is what a reader arriving from a search engine needs;
+`README.ar.md` is the same document in Arabic, and the component READMEs inside
+each directory are Arabic and stay Arabic. A change to one README that is not
+made to the other leaves two documents disagreeing about the same system.
 
 Code, comments, commit messages and command output are English. The machine
 speaks English because its console cannot render Arabic -- `vt(4)` has no
@@ -77,8 +80,7 @@ other, and CI must diff them.
 
 ## Shell scripts
 
-- POSIX `sh`, not bash, for anything that runs on the server. `hajime-migrate`
-  is the exception and says `#!/usr/bin/env bash`.
+- POSIX `sh`, not bash, for anything that runs on the server.
 - LF endings, always. FreeBSD's `sh` rejects a CRLF script with a syntax error
   naming the wrong line, Git Bash tolerates it, and CI checks for it because it
   has bitten twice.
@@ -146,23 +148,7 @@ in this repository were in the absent branch.
 | `hajime-brand` | palette, identity, mascot, generator, theme installer |
 | `hajime-web` | site table, Caddyfile generator, tunnel template |
 | `hajime-wm` | wayfire and GTK |
-| `hajime-migrate` | backup, restore, rehearsal |
 
-`decisions.md` holds the reasoning behind every non-obvious choice, newest
-last. Read the entry before changing what it decided, and add one when you
-decide something a reader would otherwise question.
-
-## graphify
-
-This project has a knowledge graph at graphify-out/ with god nodes, community structure, and cross-file relationships.
-
-When the user types `/graphify`, use the installed graphify skill or instructions before doing anything else.
-
-Rules:
-- For codebase questions, first run `graphify query "<question>"` when graphify-out/graph.json exists. Use `graphify path "<A>" "<B>"` for relationships and `graphify explain "<concept>"` for focused concepts. These return a scoped subgraph, usually much smaller than GRAPH_REPORT.md or raw grep output.
-- Dirty graphify-out/ files are expected after hooks or incremental updates; dirty graph files are not a reason to skip graphify. Only skip graphify if the task is about stale or incorrect graph output, or the user explicitly says not to use it.
-- If graphify-out/wiki/index.md exists, use it for broad navigation instead of raw source browsing.
-- Read graphify-out/GRAPH_REPORT.md only for broad architecture review or when query/path/explain do not surface enough context.
-- After modifying code, run `graphify update .` to keep the graph current (AST-only, no API cost).
-
-@RTK.md
+Every non-obvious choice in this tree has a reason, and the reason is in the
+comment above the line rather than in a document beside it. A comment that
+names the failure a line prevents is the most valuable thing in the file.
