@@ -1,0 +1,77 @@
+#!/bin/sh
+#
+# PROVIDE: hajime_wa_bridge
+# REQUIRE: LOGIN NETWORKING
+# BEFORE: hajime_wa
+# KEYWORD: shutdown
+#
+# The WhatsApp protocol bridge: whatsmeow behind a small loopback API.
+#
+# A separate process from hajime_wa on purpose. The device keys live here, so
+# restarting the Rust gateway never drops the session or forces a fresh QR
+# scan. hajimectl has listed this as a service from the start and hajime_wa
+# expects it on port 3001, but there was no rc script to start it -- so on a
+# fresh install WhatsApp could never come up, and the gateway reported the
+# bridge as down forever.
+#
+# rc.conf settings, with the defaults this script applies:
+#
+#   hajime_wa_bridge_enable="YES"
+#   hajime_wa_bridge_user="hajime"
+#   hajime_wa_bridge_bind="127.0.0.1:3001"
+#   hajime_wa_bridge_store="/vault/hajime/wa/hajime-wa.db"
+#   hajime_wa_bridge_webhook=""            where inbound messages are posted
+#
+# The store holds the device session. Back it up with the rest of /vault: lose
+# it and the phone has to scan a QR code again, which needs the phone.
+
+. /etc/rc.subr
+
+name="hajime_wa_bridge"
+rcvar="hajime_wa_bridge_enable"
+
+load_rc_config $name
+
+: ${hajime_wa_bridge_enable:="NO"}
+: ${hajime_wa_bridge_user:="hajime"}
+: ${hajime_wa_bridge_bind:="127.0.0.1:3001"}
+: ${hajime_wa_bridge_store:="/vault/hajime/wa/hajime-wa.db"}
+: ${hajime_wa_bridge_webhook:=""}
+: ${hajime_wa_bridge_log:="/var/log/hajime-wa-bridge.log"}
+
+procname="/usr/local/bin/hajime-wa-bridge"
+rundir="/var/run/hajime"
+pidfile="${rundir}/${name}.pid"
+
+start_precmd="${name}_prestart"
+command="/usr/sbin/daemon"
+command_args="-f -p ${pidfile} -o ${hajime_wa_bridge_log} ${procname}"
+
+hajime_wa_bridge_prestart()
+{
+	install -d -o "${hajime_wa_bridge_user}" -g "${hajime_wa_bridge_user}" -m 755 \
+		"${rundir}" || err 1 "cannot create ${rundir}"
+
+	if [ ! -x "${procname}" ]; then
+		err 1 "${procname} is missing. It is built by the Go toolchain, which \
+the installer skips with --skip-build: cd hajime-wa/bridge && go build"
+	fi
+
+	# The session database is the one piece of state here and it is not
+	# reproducible: without it the phone must scan a new QR code. Its directory
+	# is created 700 under the service user and nothing else.
+	install -d -o "${hajime_wa_bridge_user}" -g "${hajime_wa_bridge_user}" -m 700 \
+		"$(dirname "${hajime_wa_bridge_store}")" || \
+		err 1 "cannot create $(dirname "${hajime_wa_bridge_store}")"
+
+	export HAJIME_WA_BRIDGE_BIND="${hajime_wa_bridge_bind}"
+	export HAJIME_WA_STORE="${hajime_wa_bridge_store}"
+	if [ -n "${hajime_wa_bridge_webhook}" ]; then
+		export HAJIME_WA_WEBHOOK="${hajime_wa_bridge_webhook}"
+	fi
+
+	install -o "${hajime_wa_bridge_user}" -g "${hajime_wa_bridge_user}" -m 640 \
+		/dev/null "${hajime_wa_bridge_log}" 2>/dev/null || true
+}
+
+run_rc_command "$1"

@@ -1,0 +1,19 @@
+[workspace]
+resolver = "2"
+members = [
+    "hajime-console",
+    "hajime-core",
+    "hajime-fetch",
+    "hajime-social",
+    "hajime-sys",
+    "hajime-workflow",
+    "hajime-ai",
+    "hajime-wa",
+    "hajime-model",
+]
+
+[workspace.package]
+version = "1.0.0"
+edition = "2021"
+authors = ["Hajime OS Team"]
+license = "MIT"

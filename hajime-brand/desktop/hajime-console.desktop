@@ -1,0 +1,26 @@
+[Desktop Entry]
+# The launcher is where a desktop keeps a translation: one file per application,
+# one Name[xx] line per language, and the locale decides at run time which one is
+# read. No Arabic is painted into any picture for this; the system is localised,
+# and the picture is just a picture.
+Type=Application
+Version=1.5
+Name=Hajime Console
+Name[ar]=لوحة هاجيمي
+GenericName=System status
+GenericName[ar]=حالة النظام
+Comment=What is broken and what worked
+Comment[ar]=ما المكسور وما الذي عمل
+Exec=xdg-open http://127.0.0.1:8088/
+Icon=hajime
+Terminal=false
+Categories=System;Monitor;
+Keywords=status;services;hajime;
+Keywords[ar]=الحالة;الخدمات;هاجيمي;
+
+# Which Lucide glyph stands for this launcher in the generated
+# artwork. An X- key is the standard way to carry something the
+# spec has no field for, and it keeps the picture and the panel
+# reading from one file: the mockup used to list six applications
+# while three shipped.
+X-Hajime-Icon=activity

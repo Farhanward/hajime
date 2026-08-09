@@ -1,0 +1,45 @@
+# cloudflared: the only path in from outside.
+#
+# Copy to /usr/local/etc/cloudflared/config.yml and fill in the two values that
+# come from your Cloudflare account. The installer will not write this file for
+# you and will not invent them: a tunnel ID is an account credential, and a
+# guessed one produces a daemon that retries forever while every site is down.
+#
+# To get them, once, on a machine that can open a browser:
+#
+#   cloudflared tunnel login
+#   cloudflared tunnel create hajime
+#
+# That writes ~/.cloudflared/<UUID>.json. Move it to
+# /usr/local/etc/cloudflared/, chmod 600 it, and put its UUID below. Then point
+# each hostname at the tunnel:
+#
+#   cloudflared tunnel route dns hajime shop.example.com
+#
+# If the old stack ran more than one tunnel, each in its own container, there
+# may be more than one credential to bring over. Repeat the steps above for
+# each one and give each its own config file.
+
+tunnel: 00000000-0000-0000-0000-000000000000
+credentials-file: /usr/local/etc/cloudflared/00000000-0000-0000-0000-000000000000.json
+
+# Everything arrives on loopback port 80, where Caddy is listening, and Caddy
+# decides which site it belongs to from the Host header. One ingress rule
+# instead of one per site: the site list lives in hajime-web/sites.conf and
+# duplicating it here is how the two drift apart.
+ingress:
+  - service: http://127.0.0.1:80
+
+# Nothing else gets in. cloudflared requires a catch-all and this is it; without
+# the rule above it, this refuses every request, which is the correct default
+# for a machine whose front door is a tunnel.
+#  - service: http_status:404
+
+# Metrics on loopback, so `hajimectl status` can tell a tunnel that is up from
+# one that is merely running.
+metrics: 127.0.0.1:20241
+
+# The tunnel is the front door. If it dies the sites are unreachable even though
+# every service on the machine is fine, which is exactly the failure the console
+# is meant to make visible.
+no-autoupdate: true

@@ -1,0 +1,82 @@
+{
+  "id": "seo-node-b",
+  "name": "Node B - SEO and Content Optimization (RAG)",
+  "active": true,
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "execute-workflow-trigger",
+      "name": "Execute Workflow Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [0, 180]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 12
+            }
+          ]
+        }
+      },
+      "id": "seo-schedule",
+      "name": "SEO Schedule",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [0, 0]
+    },
+    {
+      "parameters": {
+        "url": "https://trends.google.com/trending/rss?geo=SA"
+      },
+      "id": "google-trends-rss",
+      "name": "Google Trends SA RSS",
+      "type": "n8n-nodes-base.rssFeedRead",
+      "typeVersion": 1.1,
+      "position": [260, 0]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "return items.slice(0, 5);"
+      },
+      "id": "limit-trends",
+      "name": "Limit Trends",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [520, 0]
+    },
+    {
+      "parameters": {
+        "url": "={{ $env.RAG_QUERY_URL }}",
+        "method": "POST",
+        "sendBody": true,
+        "jsonBody": "={{ JSON.stringify($json) }}"
+      },
+      "id": "rag-query",
+      "name": "RAG Query",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [780, 0]
+    }
+  ],
+  "connections": {
+    "Execute Workflow Trigger": {
+      "main": [[{ "node": "Google Trends SA RSS", "type": "main", "index": 0 }]]
+    },
+    "SEO Schedule": {
+      "main": [[{ "node": "Google Trends SA RSS", "type": "main", "index": 0 }]]
+    },
+    "Google Trends SA RSS": {
+      "main": [[{ "node": "Limit Trends", "type": "main", "index": 0 }]]
+    },
+    "Limit Trends": {
+      "main": [[{ "node": "RAG Query", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": { "executionOrder": "v1" }
+}

@@ -1,0 +1,81 @@
+#!/bin/sh
+#
+# PROVIDE: hajime_console
+# REQUIRE: LOGIN NETWORKING
+# KEYWORD: shutdown
+#
+# The system console: one page saying what is broken and what worked.
+#
+# It had no rc script for a while, which meant the binary was installed, the
+# message of the day pointed at http://127.0.0.1:8088/, the desktop opened that
+# address on login, and nothing ever started the thing that answers it.
+#
+# rc.conf settings, with the defaults this script applies:
+#
+#   hajime_console_enable="YES"
+#   hajime_console_user="hajime"               unprivileged on purpose
+#   hajime_console_bind="127.0.0.1:8088"
+#   hajime_console_secrets="/usr/local/etc/hajime"
+#   hajime_console_workflow_url="http://127.0.0.1:5678"
+#   hajime_console_ai_url="http://127.0.0.1:11434"
+#
+# The console reads other services and holds no data of its own, so it starts
+# whether or not they are up: a dashboard that refuses to start because the
+# thing it reports on is down reports nothing at the moment it is needed.
+
+. /etc/rc.subr
+
+name="hajime_console"
+rcvar="hajime_console_enable"
+
+load_rc_config $name
+
+: ${hajime_console_enable:="NO"}
+: ${hajime_console_user:="hajime"}
+: ${hajime_console_bind:="127.0.0.1:8088"}
+: ${hajime_console_secrets:="/usr/local/etc/hajime"}
+: ${hajime_console_workflow_url:="http://127.0.0.1:5678"}
+: ${hajime_console_ai_url:="http://127.0.0.1:11434"}
+: ${hajime_console_log:="/var/log/hajime-console.log"}
+
+procname="/usr/local/bin/hajime-console"
+rundir="/var/run/hajime"
+pidfile="${rundir}/${name}.pid"
+
+start_precmd="${name}_prestart"
+command="/usr/sbin/daemon"
+command_args="-f -p ${pidfile} -o ${hajime_console_log} ${procname}"
+
+hajime_console_prestart()
+{
+	install -d -o "${hajime_console_user}" -g "${hajime_console_user}" -m 755 \
+		"${rundir}" || err 1 "cannot create ${rundir}"
+
+	if [ ! -x "${procname}" ]; then
+		err 1 "${procname} is missing or not executable"
+	fi
+
+	export HAJIME_CONSOLE_BIND="${hajime_console_bind}"
+	export HAJIME_CONSOLE_SECRETS="${hajime_console_secrets}"
+	export HAJIME_WORKFLOW_URL="${hajime_console_workflow_url}"
+	export HAJIME_AI_URL="${hajime_console_ai_url}"
+
+	# Off loopback the page must be behind a token: it lists every service, its
+	# port and what the model has been doing, which is a map for anyone who
+	# finds it. The binary enforces this too; failing here says why.
+	case "${hajime_console_bind}" in
+	127.*|\[::1\]*|localhost*)
+		;;
+	*)
+		if [ ! -r "${hajime_console_secrets}/console_token" ]; then
+			err 1 "${hajime_console_bind} is not loopback and \
+${hajime_console_secrets}/console_token is unreadable; the page would be open"
+		fi
+		;;
+	esac
+
+	install -o "${hajime_console_user}" -g "${hajime_console_user}" -m 640 \
+		/dev/null "${hajime_console_log}" 2>/dev/null || true
+}
+
+run_rc_command "$1"

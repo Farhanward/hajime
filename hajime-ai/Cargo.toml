@@ -1,0 +1,23 @@
+[package]
+name = "hajime-ai"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+hajime-core = { path = "../hajime-core" }
+# The binary is the composition root: it is the only place that knows
+# which tool providers exist. The library above stays unaware of them.
+hajime-social = { path = "../hajime-social" }
+hajime-fetch = { path = "../hajime-fetch" }
+tokio = { version = "1.38", features = ["full"] }
+axum = "0.7"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+# rustls, not native-tls: on FreeBSD native-tls means OpenSSL headers and
+# a C build step. rustls is pure Rust and builds identically everywhere.
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "charset", "http2"] }
+async-trait = "0.1"
+thiserror = "1.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+chrono = { version = "0.4", features = ["serde"] }

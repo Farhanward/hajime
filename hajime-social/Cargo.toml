@@ -1,0 +1,16 @@
+[package]
+name = "hajime-social"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+hajime-core = { path = "../hajime-core" }
+tokio = { version = "1.38", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+# rustls, not native-tls: on FreeBSD native-tls means OpenSSL headers and
+# a C build step. rustls is pure Rust and builds identically everywhere.
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "charset", "http2"] }
+async-trait = "0.1"
+thiserror = "1.0"
+chrono = { version = "0.4", features = ["serde"] }

@@ -1,0 +1,28 @@
+# Two login classes, one per language.
+#
+# This is where a language belongs on a Unix: in the login class, so every
+# program a session starts inherits it -- the shell, the file manager, the
+# panel, the applications that read LC_MESSAGES, and the direction GTK lays
+# widgets out in. It is the same arrangement Windows and macOS present as a
+# display-language setting, expressed in the file this system actually reads.
+#
+# Nothing above the desktop changes with it. The loader's screen and the kernel
+# console stay English on purpose: vt(4) has no bidirectional layout and no
+# Arabic shaping, so Arabic there would render as isolated letters in reverse
+# order. A system that prints broken Arabic to prove it speaks Arabic is worse
+# than one that prints plain English.
+#
+# Switch a user with:  hajime-lang ar        (or: hajime-lang en)
+# which is `pw usermod <user> -L hajime-ar` and a cap_mkdb.
+
+hajime-ar:\
+	:lang=ar_SA.UTF-8:\
+	:charset=UTF-8:\
+	:setenv=LC_COLLATE=C,LANG=ar_SA.UTF-8,MM_CHARSET=UTF-8:\
+	:tc=default:
+
+hajime-en:\
+	:lang=en_US.UTF-8:\
+	:charset=UTF-8:\
+	:setenv=LC_COLLATE=C,LANG=en_US.UTF-8,MM_CHARSET=UTF-8:\
+	:tc=default:

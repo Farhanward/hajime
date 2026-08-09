@@ -1,0 +1,25 @@
+[package]
+name = "hajime-core"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "1.0"
+tracing = "0.1"
+chrono = { version = "0.4", features = ["serde"] }
+axum = "0.7"
+async-trait = "0.1"
+# Advisory file locks. Pure Rust over flock(2) on FreeBSD, so no C build step
+# and no stale lock to clean up after a crash: the kernel releases it when the
+# process dies.
+fs4 = "0.13"
+
+[features]
+# Exposes permissive test helpers. Never enable in a deployed build.
+testing = []
+
+[dev-dependencies]
+# The tool gateway tests are async.
+tokio = { version = "1.38", features = ["macros", "rt-multi-thread"] }

@@ -1,0 +1,179 @@
+{
+  "updatedAt": "2026-05-25T21:08:55.460Z",
+  "createdAt": "2026-05-21T00:32:31.626Z",
+  "id": "Nk1DKcZyC93MK0qf",
+  "name": "🚨 Example Co — Hourly Health Monitor",
+  "description": "Fixed 2026-05-26: uses fetch and container env for Telegram secrets; no inline bot token.\nRebuilt 2026-05-26: uses HTTP Request node for page checks; no inline Telegram secret.",
+  "active": true,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "manual-execute-trigger",
+      "name": "Manual Execute Trigger",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1,
+      "position": [
+        -20,
+        120
+      ]
+    },
+    {
+      "id": "s3",
+      "name": "Every Hour",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 * * * *"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const SITE = 'https://www.example.com';\nconst paths = ['/', '/robots.txt', '/llms.txt', '/sitemap.xml', '/index.md'];\nreturn paths.map(path => ({ json: { path, url: SITE + path, started_at: new Date().toISOString() } }));"
+      },
+      "id": "build-health-checks",
+      "name": "Build Health Checks",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        160,
+        90
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.url }}",
+        "method": "GET",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "ExampleHealthMonitor/1.0"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "fetch-health-page",
+      "name": "Fetch Health Page",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        430,
+        90
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const checked = items.map(item => item.json);\nreturn [{ json: { ok: true, checks: checked.length, checked_paths: checked.map(x => x.path || x.url || 'unknown'), timestamp: new Date().toISOString() } }];"
+      },
+      "id": "summarize-health",
+      "name": "Summarize Health",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        700,
+        90
+      ]
+    }
+  ],
+  "connections": {
+    "Every Hour": {
+      "main": [
+        [
+          {
+            "node": "Build Health Checks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Manual Execute Trigger": {
+      "main": [
+        [
+          {
+            "node": "Build Health Checks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Health Checks": {
+      "main": [
+        [
+          {
+            "node": "Fetch Health Page",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Health Page": {
+      "main": [
+        [
+          {
+            "node": "Summarize Health",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": {
+    "node:Every Hour": {
+      "recurrenceRules": []
+    }
+  },
+  "meta": null,
+  "pinData": null,
+  "versionId": "a2431c22-a3e2-484d-8698-86daa5160f4e",
+  "activeVersionId": "ad757788-c5bf-4198-aba3-c3f7e1165279",
+  "versionCounter": 48,
+  "triggerCount": 1,
+  "tags": [],
+  "shared": [
+    {
+      "updatedAt": "2026-05-21T00:32:31.627Z",
+      "createdAt": "2026-05-21T00:32:31.627Z",
+      "role": "workflow:owner",
+      "workflowId": "Nk1DKcZyC93MK0qf",
+      "projectId": "pKpUvj3cEnjyfbp9",
+      "project": {
+        "updatedAt": "2026-05-16T18:50:27.651Z",
+        "createdAt": "2026-05-16T10:55:41.433Z",
+        "id": "pKpUvj3cEnjyfbp9",
+        "name": "Example Admin <admin@example.com>",
+        "type": "personal",
+        "icon": null,
+        "description": null,
+        "creatorId": "d753ea16-630c-408d-a338-c1fb6517b96d"
+      }
+    }
+  ],
+  "versionMetadata": null
+}

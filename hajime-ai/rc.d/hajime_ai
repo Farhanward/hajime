@@ -1,0 +1,82 @@
+#!/bin/sh
+#
+# PROVIDE: hajime_ai
+# REQUIRE: LOGIN NETWORKING
+# KEYWORD: shutdown
+#
+# Hajime model gateway and tool gateway.
+#
+# rc.conf settings and their defaults:
+#
+#   hajime_ai_enable="YES"
+#   hajime_ai_bind="127.0.0.1:11434"
+#   hajime_ai_backend="http://127.0.0.1:11435"
+#   hajime_ai_secrets="/usr/local/etc/hajime/secrets"
+#   hajime_ai_live="NO"     YES lets tools with external effects really run
+#
+# The token is read from a file, not from rc.conf, so it does not appear in
+# `ps` output or in a world-readable config.
+
+. /etc/rc.subr
+
+name="hajime_ai"
+rcvar="hajime_ai_enable"
+
+load_rc_config $name
+
+: ${hajime_ai_enable:="NO"}
+: ${hajime_ai_user:="hajime"}
+: ${hajime_ai_bind:="127.0.0.1:11434"}
+: ${hajime_ai_secrets:="/usr/local/etc/hajime/secrets"}
+: ${hajime_ai_history:="/vault/hajime/hajime_ai.jsonl"}
+: ${hajime_ai_log:="/var/log/hajime_ai.log"}
+: ${hajime_ai_backend:="http://127.0.0.1:11435"}
+: ${hajime_ai_live:="NO"}
+
+procname="/usr/local/bin/hajime-ai"
+# The pidfile lives under /var/run/hajime rather than directly in /var/run.
+# rc.subr runs this command through `su -m ${name}_user`, so daemon(8) executes
+# unprivileged, and /var/run itself is writable only by root. The directory is
+# created in prestart, which runs before that su and therefore still as root.
+rundir="/var/run/hajime"
+pidfile="${rundir}/${name}.pid"
+
+start_precmd="${name}_prestart"
+command="/usr/sbin/daemon"
+command_args="-f -p ${pidfile} -o ${hajime_ai_log} ${procname}"
+
+hajime_ai_prestart()
+{
+	install -d -o "${hajime_ai_user}" -g "${hajime_ai_user}" -m 755 \
+		"${rundir}" || err 1 "cannot create ${rundir}"
+
+	[ -x "${procname}" ] || err 1 "${procname} is missing or not executable"
+
+	export HAJIME_AI_BIND="${hajime_ai_bind}"
+	export HAJIME_AI_SECRETS="${hajime_ai_secrets}"
+	export HAJIME_AI_HISTORY="${hajime_ai_history}"
+	export HAJIME_AI_BACKEND="${hajime_ai_backend}"
+
+	# Dry run is the default. Turning it off means posts and messages
+	# really go out and cannot be recalled, so it is opt-in and loud.
+	if checkyesno hajime_ai_live; then
+		export HAJIME_AI_LIVE=1
+		warn "hajime_ai_live is YES: external tool effects are LIVE"
+	fi
+
+	# Refuse a secret directory anyone can read. The binary checks this too;
+	# failing here gives a clearer message than a stack of Rust errors.
+	if [ -d "${hajime_ai_secrets}" ]; then
+		_mode=$(stat -f "%Lp" "${hajime_ai_secrets}")
+		case "${_mode}" in
+		*[2367])
+			err 1 "${hajime_ai_secrets} is mode ${_mode}; run 'chmod 700' on it"
+			;;
+		esac
+	fi
+
+	install -d -o "${hajime_ai_user}" -g "${hajime_ai_user}" -m 750 		"$(dirname "${hajime_ai_history}")" 2>/dev/null || true
+	install -o "${hajime_ai_user}" -g "${hajime_ai_user}" -m 640 		/dev/null "${hajime_ai_log}" 2>/dev/null || true
+}
+
+run_rc_command "$1"

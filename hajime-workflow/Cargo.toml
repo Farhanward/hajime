@@ -1,0 +1,38 @@
+[package]
+name = "hajime-workflow"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+hajime-core = { path = "../hajime-core" }
+tokio = { version = "1.38", features = ["full"] }
+axum = "0.7"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+# rustls, not native-tls: on FreeBSD native-tls means OpenSSL headers and
+# a C build step. rustls is pure Rust and builds identically everywhere.
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls", "charset", "http2"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tower-http = { version = "0.5", features = ["cors", "fs"] }
+async-trait = "0.1"
+thiserror = "1.0"
+croner = "2.1"
+chrono = "0.4"
+chrono-tz = "0.10"
+feed-rs = "2.1"
+russh = "0.51"
+# rquickjs ships pre-generated bindings for common targets but not for
+# FreeBSD, where the build fails asking for `bindgen`. bindgen in turn needs
+# libclang, which a stock Windows box does not have. So each platform gets
+# what it needs: generated bindings on FreeBSD, shipped ones elsewhere.
+rquickjs = "0.9"
+
+[dev-dependencies]
+# resolver 2 keeps this out of the normal build.
+hajime-core = { path = "../hajime-core", features = ["testing"] }
+
+[target.'cfg(target_os = "freebsd")'.dependencies]
+# FreeBSD has no pre-generated bindings; generate them. Requires devel/llvm
+# for libclang.so, which the install docs list as a build dependency.
+rquickjs = { version = "0.9", features = ["bindgen"] }

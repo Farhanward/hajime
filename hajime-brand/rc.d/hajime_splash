@@ -1,0 +1,87 @@
+#!/bin/sh
+#
+# The last thing the boot prints.
+#
+# PROVIDE: hajime_splash
+# REQUIRE: LOGIN
+# KEYWORD: nojail
+#
+# What this is not: a progress bar. By the time an rc script at LOGIN runs, the
+# boot is over -- there is nothing left to make progress on, and a bar that
+# fills after the fact is a lie with a nice easing curve.
+#
+# What it is: the mascot, and four things that were true at the moment it ran.
+# Each line is a command's answer, not a string. If the boot environment is
+# unknown the line says so; if a service is down the count says so. A screen
+# that always says READY is a screen nobody reads twice.
+#
+# rc.conf:
+#   hajime_splash_enable="YES"
+
+. /etc/rc.subr
+
+name="hajime_splash"
+rcvar="hajime_splash_enable"
+start_cmd="hajime_splash_start"
+stop_cmd=":"
+
+load_rc_config $name
+: "${hajime_splash_enable:=NO}"
+: "${hajime_splash_share:=/usr/local/share/hajime}"
+: "${hajime_splash_console:=/dev/console}"
+
+hajime_splash_start()
+{
+	# Everything goes to the console rather than to stdout: at LOGIN the
+	# script's stdout may already be a log file, and this is meant for the
+	# screen the machine is plugged into.
+	{
+		printf '\n'
+		if [ -f "${hajime_splash_share}/console-logo.ansi" ]; then
+			# The art carries its own colour escapes, which land in the
+			# palette /boot/loader.conf set. Printed with cat, not echo:
+			# the file already contains real escape bytes.
+			cat "${hajime_splash_share}/console-logo.ansi"
+		fi
+		printf '\n'
+
+		# --- what is true right now --------------------------------
+		printf '  \033[36;1mHajime OS\033[m  %s\n' \
+		    "$(freebsd-version -r 2>/dev/null || uname -r)"
+
+		be=$(bectl list -H 2>/dev/null | awk '$2 ~ /N/ { print $1; exit }')
+		if [ -n "$be" ]; then
+			printf '  boot environment  \033[37;1m%s\033[m\n' "$be"
+			printf '                    one activate and a reboot puts it back\n'
+		else
+			printf '  boot environment  \033[33;1mnone\033[m — not a ZFS root, so there is\n'
+			printf '                    no one-step way back from a bad change\n'
+		fi
+
+		if command -v hajimectl >/dev/null 2>&1; then
+			summary=$(hajimectl status 2>/dev/null | tail -1)
+			if hajimectl status >/dev/null 2>&1; then
+				printf '  services          \033[32;1m%s\033[m\n' "${summary:-up}"
+			else
+				printf '  services          \033[31;1m%s\033[m\n' "${summary:-unknown}"
+				printf '                    hajimectl status  says which\n'
+			fi
+		else
+			printf '  services          \033[33;1mhajimectl not installed\033[m\n'
+		fi
+
+		printf '  console           http://127.0.0.1:8088/\n'
+
+		# --- who made it -------------------------------------------
+		# Read from a generated file rather than written here: the repository,
+		# the name and the sponsor link live in brand.toml, and a copy of them
+		# in a shell script is a copy that will be the last to be corrected.
+		printf '\n'
+		if [ -f "${hajime_splash_share}/console-credits.ansi" ]; then
+			cat "${hajime_splash_share}/console-credits.ansi"
+		fi
+		printf '\n'
+	} > "${hajime_splash_console}" 2>/dev/null
+}
+
+run_rc_command "$1"

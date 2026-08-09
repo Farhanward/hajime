@@ -1,0 +1,20 @@
+[Desktop Entry]
+Type=Application
+Version=1.5
+Name=Files
+Name[ar]=الملفات
+Comment=The vault, the backups and the snapshots
+Comment[ar]=المستودع والنسخ واللقطات
+Exec=thunar %U
+Icon=system-file-manager
+Terminal=false
+Categories=System;FileTools;FileManager;
+Keywords=files;folders;vault;
+Keywords[ar]=ملفات;مجلدات;مستودع;
+
+# Which Lucide glyph stands for this launcher in the generated
+# artwork. An X- key is the standard way to carry something the
+# spec has no field for, and it keeps the picture and the panel
+# reading from one file: the mockup used to list six applications
+# while three shipped.
+X-Hajime-Icon=folder

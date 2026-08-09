@@ -1,0 +1,18 @@
+# Hajime desktop -- the default handler for URLs xdg-open is asked to open.
+#
+# The console launcher runs `xdg-open http://127.0.0.1:8088/`. With no GNOME
+# or KDE session for xdg-open to detect, it falls back to
+# `xdg-mime query default x-scheme-handler/http`, and xdg-mime reads this
+# file before it ever looks at XDG_DATA_DIRS. Without it, that query returns
+# nothing and the launcher does nothing -- the bug this file exists to close.
+#
+# badwolf.desktop is not written by this repo. The www/badwolf package installs
+# it to /usr/local/share/applications/badwolf.desktop, and that alone is
+# enough for the name below to resolve.
+#
+# Install: ~/.config/mimeapps.list (see hajime-wm/install_desktop.sh)
+
+[Default Applications]
+x-scheme-handler/http=badwolf.desktop
+x-scheme-handler/https=badwolf.desktop
+text/html=badwolf.desktop

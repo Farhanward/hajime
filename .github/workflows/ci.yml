@@ -1,0 +1,265 @@
+name: build and test
+
+# The FreeBSD job is the point of this file. Everything here was developed on
+# Windows and verified in a local FreeBSD guest that had no route to the
+# internet, so two things stayed untested: `pkg install`, and anything needing a
+# database. A runner with a working network closes exactly that gap.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  linux:
+    name: linux, fast feedback
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: build
+        run: cargo build --workspace --verbose
+
+      - name: test
+        run: cargo test --workspace --verbose
+
+      # Warnings are errors here rather than a note nobody reads. The workspace
+      # is at zero, so the first one to appear is the one that gets fixed.
+      - name: no warnings
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: the theme matches the code that generates it
+        # The palettes, the loader's Lua, the console art and the Rust constants
+        # the console compiles in are all generated. A committed generated file
+        # drifts the moment someone edits it by hand or edits the generator and
+        # forgets to re-run it, and both are silent. This regenerates into a
+        # temporary directory and diffs.
+        #
+        # It does not diff the pictures. Their lettering is rasterised by
+        # whatever FreeType the machine has, and two versions put a pixel in a
+        # different place -- so byte-comparing them here would fail every run for
+        # a reason nobody can fix. They are checked for presence and size, which
+        # is the part that can actually go wrong in a commit.
+        run: |
+          python3 -m pip install --quiet --break-system-packages pillow
+          python3 hajime-brand/tools/emit.py --check
+
+      - name: every file the theme refers to exists
+        # The installer reads about thirty paths and writes them somewhere else.
+        # A missing one does not fail when it goes missing; it fails halfway
+        # through an install on a machine with no console.
+        run: sh hajime-brand/check_wiring.sh
+
+      - name: line endings
+        # FreeBSD's sh rejects a CRLF script with a syntax error naming the
+        # wrong line, and Git Bash tolerates it, so this only ever fails on the
+        # target. It has bitten twice.
+        run: |
+          bad=$(find . -name '*.sh' -o -path '*/rc.d/*' -type f -o -name '*.ansi' | xargs file | grep -i crlf || true)
+          if [ -n "$bad" ]; then echo "CRLF found:"; echo "$bad"; exit 1; fi
+          echo "all scripts are LF"
+
+  freebsd:
+    name: freebsd 14, with a network
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: build, test, and install on FreeBSD
+        uses: vmactions/freebsd-vm@v1
+        with:
+          # The same release the server will run. The action defaults to 14.2,
+          # which the installer refuses as end-of-life, so pinning this keeps
+          # the CI exercising the path the real machine takes.
+          release: '14.4'
+          usesh: true
+          # The installer needs the packages it manages, and the whole reason
+          # for this job is that they can actually be fetched here.
+          prepare: |
+            pkg install -y rust git llvm19 sudo
+
+          run: |
+            set -e
+            echo "===== 1. the platform ====="
+            freebsd-version -r
+            uname -m
+
+            echo
+            echo "===== 2. build ====="
+            cargo build --release --workspace
+
+            echo
+            echo "===== 3. test ====="
+            cargo test --release --workspace
+
+            echo
+            echo "===== 4. every shipped script parses under FreeBSD sh ====="
+            fail=0
+            for f in $(find . -name '*.sh') $(ls hajime-*/rc.d/* 2>/dev/null); do
+              printf '%-46s ' "$f"
+              if sh -n "$f"; then echo ok; else echo FAILED; fail=1; fi
+            done
+            [ "$fail" -eq 0 ] || exit 1
+
+            echo
+            echo "===== 5. jail.conf parses ====="
+            jail -f hajime-jails/jail.conf -e ';' | head -3
+
+            echo
+            echo "===== 6. the installer, dry run ====="
+            # The runner has no ZFS pool, so preflight refuses and the dry run
+            # exits non-zero by design. It still prints the whole plan, which is
+            # what makes it worth running: a blocker in any later phase shows up
+            # here rather than at the first one.
+            sh install_hajime_os.sh --dry-run --skip-build || true
+
+            echo
+            echo "===== 7. the packages the installer manages ====="
+            # The gap this job exists for. If a package name is wrong or has
+            # been renamed in the ports tree, it fails here rather than on the
+            # server.
+            pkg install -y postgresql17-server postgresql17-client \
+                           mariadb1011-server mariadb1011-client redis caddy \
+                           badwolf
+
+            echo
+            echo "===== 7b. PHP, for the shop ====="
+            # The store is PHP and nothing installed an interpreter until now.
+            # Every extension name carries the version, so a ports rename breaks
+            # all of them at once, which is the kind of thing this job exists to
+            # find here rather than on the server.
+            pkg install -y php84 php84-extensions php84-mysqli php84-pdo_mysql \
+                           php84-gd php84-zip php84-mbstring php84-curl \
+                           php84-session php84-fileinfo php84-dom \
+                           php84-simplexml php84-iconv php84-opcache
+            php -v | head -1
+            echo "modules: $(php -m | tr '\n' ' ' | head -c 300)"
+
+            echo
+            echo "===== 7c. a site table becomes a Caddyfile ====="
+            # Proves the generator produces something Caddy itself accepts, and
+            # that an empty table writes nothing rather than an empty proxy.
+            mkdir -p /tmp/www/shop /tmp/www/site
+            {
+              echo 'shop.example.com php /tmp/www/shop'
+              echo 'portfolio.example.com static /tmp/www/site'
+              echo 'orders.example.com proxy 127.0.0.1:8090'
+            } > /tmp/sites.conf
+            # /tmp's mode is checked across the call. The generator used to run
+            # `install -d -m 755` on the output's parent unconditionally, which
+            # took /tmp from 1777 down to 755 and left postgres unable to create
+            # its socket lock file three steps below, failing with a message
+            # that named neither /tmp nor this script.
+            before=$(stat -f %Lp /tmp)
+            sh hajime-web/generate_caddyfile.sh --sites /tmp/sites.conf \
+                                                --out /tmp/Caddyfile
+            after=$(stat -f %Lp /tmp)
+            if [ "$before" != "$after" ]; then
+              echo "the generator changed /tmp from $before to $after"; exit 1
+            fi
+            echo "the generator left /tmp at $after"
+            caddy validate --config /tmp/Caddyfile --adapter caddyfile
+
+            echo '# none' > /tmp/none.conf
+            if sh hajime-web/generate_caddyfile.sh --sites /tmp/none.conf \
+                                                   --out /tmp/Caddyfile2; then
+              echo "an empty table should have exited 2"; exit 1
+            fi
+            if [ -f /tmp/Caddyfile2 ]; then
+              echo "it wrote a file for an empty table"; exit 1
+            fi
+            echo "the generator refuses an empty table"
+
+            echo
+            echo "===== 8. postgres: initdb and a real query ====="
+            sysrc postgresql_enable=YES
+            service postgresql initdb
+            # pg_ctl says only "could not start server. Examine the log
+            # output.", and the FreeBSD port ships log_destination = syslog, so
+            # the reason goes to /var/log/messages and never to the CI page.
+            # Finding that out once cost three runs; print it here instead.
+            if ! service postgresql start; then
+              echo "--- postgres would not start; here is why ---"
+              df -h /
+              ls -ld /tmp
+              tail -40 /var/log/messages 2>/dev/null || echo "no /var/log/messages"
+              exit 1
+            fi
+            sleep 5
+            su -m postgres -c 'psql -tAc "select version()"' | head -1
+
+            echo
+            echo "===== 9. mariadb: start and a real query ====="
+            sysrc mysql_enable=YES
+            service mysql-server start
+            sleep 10
+            # `mariadb` is the client's own name; `mysql` is a compatibility
+            # link that has come and gone between versions. Try both.
+            mariadb -u root -e 'select version()' 2>/dev/null \
+              || mysql -u root -e 'select version()' 2>&1 | head -2
+
+            echo
+            echo "===== 10. redis ====="
+            sysrc redis_enable=YES
+            service redis start
+            sleep 3
+            redis-cli ping
+
+            echo
+            echo "===== 11. caddy: reverse-proxy smoke test ====="
+            mkdir -p /usr/local/etc/caddy
+            printf ':80 {\n    respond "Hajime OS CI" 200\n}\n' \
+              > /usr/local/etc/caddy/Caddyfile
+            sysrc caddy_enable=YES
+            service caddy start
+            sleep 2
+            fetch -qo - http://127.0.0.1:80/
+
+            echo
+            echo "===== 12. hajime_workflow: the engine the sites depend on ====="
+            install -m 755 target/release/hajime-workflow /usr/local/bin/
+            install -m 755 hajime-workflow/rc.d/hajime_workflow /usr/local/etc/rc.d/
+            pw groupadd hajime -g 900 2>/dev/null || true
+            pw useradd hajime -u 900 -g hajime -d /vault/hajime \
+              -s /usr/sbin/nologin 2>/dev/null || true
+            install -d -o hajime -g hajime -m 750 /vault/hajime
+            install -d -o hajime -g hajime -m 750 /usr/local/etc/hajime
+            echo '[]' > /vault/hajime/workflows.json
+            chown hajime:hajime /vault/hajime/workflows.json
+            chmod 640 /vault/hajime/workflows.json
+            sysrc hajime_workflow_enable=YES
+            service hajime_workflow start
+            sleep 2
+
+            echo
+            echo "===== 13. the model, trained here ====="
+            ./target/release/hajime-model accuracy
+            ./target/release/hajime-model ask "what is running" || true
+
+            echo
+            echo "===== 14. hajimectl against real databases ====="
+            install -m 755 target/release/hajimectl /usr/local/bin/
+            hajimectl status || true
+            hajimectl check || true
+
+  # A machine that is neither the development box nor the target, to catch
+  # anything that only works because of where it was written.
+  windows:
+    name: windows
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --workspace

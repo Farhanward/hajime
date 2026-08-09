@@ -1,0 +1,22 @@
+[package]
+name = "hajime-model"
+version = "1.0.0"
+edition = "2021"
+
+[dependencies]
+hajime-core = { path = "../hajime-core" }
+hajime-sys = { path = "../hajime-sys" }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "1.0"
+async-trait = "0.1"
+
+# No neural-network crate, no downloaded weights, no tokenizer. The classifier
+# in `classify.rs` is a few hundred lines of arithmetic over hashed character
+# n-grams, trained on a corpus this crate generates from its own model of the
+# system. That is what makes it small enough to run beside a database on an
+# eight-gigabyte host.
+
+[dev-dependencies]
+hajime-core = { path = "../hajime-core", features = ["testing"] }
+tokio = { version = "1.38", features = ["macros", "rt-multi-thread"] }

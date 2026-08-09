@@ -1,0 +1,138 @@
+#!/bin/sh
+#
+# PROVIDE: hajime_workflow
+# REQUIRE: LOGIN NETWORKING
+# KEYWORD: shutdown
+#
+# Hajime workflow engine.
+#
+# rc.conf settings, with the defaults this script applies:
+#
+#   hajime_workflow_enable="YES"
+#   hajime_workflow_user="hajime"              unprivileged on purpose
+#   hajime_workflow_workflows="/vault/hajime/workflows.json"
+#   hajime_workflow_bind="127.0.0.1:5678"
+#   hajime_workflow_tz="Asia/Riyadh"
+#   hajime_workflow_history="/vault/hajime/history.jsonl"
+#   hajime_workflow_token_file="/usr/local/etc/hajime/token"
+#
+# The token is read from a file rather than rc.conf so it does not appear in
+# `ps` output or in a world-readable config. The host-touching capabilities
+# (executeCommand, ssh, readWriteFile) stay off unless named here, because two
+# of the imported workflows pass a webhook body straight to a shell.
+#
+#   hajime_workflow_allow_command="NO"
+#   hajime_workflow_allow_ssh="NO"
+#   hajime_workflow_file_roots=""
+#
+# Two more, both about not doing a job twice or not noticing one was skipped:
+#
+#   hajime_workflow_lock="/vault/hajime/workflow.lock"
+#   hajime_workflow_state="/vault/hajime/scheduler.tick"
+#   hajime_workflow_catchup="NO"
+#
+# The lock is what stops a second copy started by hand from firing every
+# schedule alongside the one rc already runs. The tick file is how a restart
+# learns what came due while the machine was off; without it those runs are
+# dropped and nothing anywhere records that they were.
+#
+# Catchup runs each missed schedule once on startup. Off by default: a daily
+# job missed over a long weekend should not fire three times the moment the
+# machine returns.
+
+. /etc/rc.subr
+
+name="hajime_workflow"
+rcvar="hajime_workflow_enable"
+
+load_rc_config $name
+
+: ${hajime_workflow_enable:="NO"}
+: ${hajime_workflow_user:="hajime"}
+: ${hajime_workflow_workflows:="/vault/hajime/workflows.json"}
+: ${hajime_workflow_bind:="127.0.0.1:5678"}
+: ${hajime_workflow_tz:="Asia/Riyadh"}
+: ${hajime_workflow_history:="/vault/hajime/history.jsonl"}
+: ${hajime_workflow_token_file:="/usr/local/etc/hajime/token"}
+: ${hajime_workflow_allow_command:="NO"}
+: ${hajime_workflow_allow_ssh:="NO"}
+: ${hajime_workflow_file_roots:=""}
+: ${hajime_workflow_log:="/var/log/hajime-workflow.log"}
+: ${hajime_workflow_lock:="/vault/hajime/workflow.lock"}
+: ${hajime_workflow_state:="/vault/hajime/scheduler.tick"}
+: ${hajime_workflow_catchup:="NO"}
+
+procname="/usr/local/bin/hajime-workflow"
+# The pidfile lives under /var/run/hajime rather than directly in /var/run.
+# rc.subr runs this command through `su -m ${name}_user`, so daemon(8) executes
+# unprivileged, and /var/run itself is writable only by root. The directory is
+# created in prestart, which runs before that su and therefore still as root.
+rundir="/var/run/hajime"
+pidfile="${rundir}/${name}.pid"
+
+start_precmd="${name}_prestart"
+command="/usr/sbin/daemon"
+command_args="-f -p ${pidfile} -o ${hajime_workflow_log} ${procname}"
+
+hajime_workflow_prestart()
+{
+	install -d -o "${hajime_workflow_user}" -g "${hajime_workflow_user}" -m 755 \
+		"${rundir}" || err 1 "cannot create ${rundir}"
+
+	if [ ! -x "${procname}" ]; then
+		err 1 "${procname} is missing or not executable"
+	fi
+
+	if [ ! -r "${hajime_workflow_workflows}" ]; then
+		err 1 "cannot read ${hajime_workflow_workflows}; export it with \
+'n8n export:workflow --all'"
+	fi
+
+	export HAJIME_WORKFLOWS="${hajime_workflow_workflows}"
+	export HAJIME_BIND="${hajime_workflow_bind}"
+	export HAJIME_TZ="${hajime_workflow_tz}"
+	export HAJIME_HISTORY="${hajime_workflow_history}"
+	export HAJIME_LOCK="${hajime_workflow_lock}"
+	export HAJIME_SCHEDULER_STATE="${hajime_workflow_state}"
+	checkyesno hajime_workflow_catchup && export HAJIME_CATCHUP=1
+
+	# A token is mandatory whenever the service listens off loopback. The
+	# binary refuses to start otherwise; checking here gives a clearer error.
+	case "${hajime_workflow_bind}" in
+	127.*|\[::1\]*|localhost*)
+		;;
+	*)
+		if [ ! -r "${hajime_workflow_token_file}" ]; then
+			err 1 "${hajime_workflow_bind} is not loopback and \
+${hajime_workflow_token_file} is unreadable; the control endpoints would be open"
+		fi
+		;;
+	esac
+
+	if [ -r "${hajime_workflow_token_file}" ]; then
+		# Refuse a token file anyone can read.
+		_mode=$(stat -f "%Lp" "${hajime_workflow_token_file}")
+		case "${_mode}" in
+		*[2367])
+			err 1 "${hajime_workflow_token_file} is mode ${_mode}; \
+tighten it with 'chmod 600'"
+			;;
+		esac
+		HAJIME_TOKEN=$(cat "${hajime_workflow_token_file}")
+		export HAJIME_TOKEN
+	fi
+
+	checkyesno hajime_workflow_allow_command && export HAJIME_ALLOW_COMMAND=1
+	checkyesno hajime_workflow_allow_ssh && export HAJIME_ALLOW_SSH=1
+
+	if [ -n "${hajime_workflow_file_roots}" ]; then
+		export HAJIME_FILE_ROOTS="${hajime_workflow_file_roots}"
+	fi
+
+	install -d -o "${hajime_workflow_user}" -g "${hajime_workflow_user}" -m 750 \
+		"$(dirname "${hajime_workflow_history}")" 2>/dev/null || true
+	install -o "${hajime_workflow_user}" -g "${hajime_workflow_user}" -m 640 \
+		/dev/null "${hajime_workflow_log}" 2>/dev/null || true
+}
+
+run_rc_command "$1"

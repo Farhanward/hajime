@@ -1,0 +1,158 @@
+# The Hajime palette, once.
+#
+# Before this file the same twenty colours were written out by hand in
+# hajime-console/static/console.css and again in hajime-wm/hajime_theme.css, and
+# a third set of near-misses lived in wayfire.ini as floating point triples.
+# Three copies of one palette is two copies too many: the first time one is
+# nudged the desktop and the console start disagreeing about what red means.
+#
+# Everything downstream is generated from here by tools/emit.py:
+#
+#   out/palette.css       :root custom properties, for the web console
+#   out/palette-gtk.css   @define-color, for GTK 3 and 4
+#   out/loader.conf.vt    kern.vt.color.N.rgb, for the kernel console
+#   out/wayfire.colors    decoration colours as the floats wayfire wants
+#
+# Two rooms, one house. The warm set is the machine awake: a cream CRT screen in
+# a wooden bezel, which is what the desktop and the console are. The cold set is
+# the machine still coming up, before the tube has warmed: a dark board with
+# chalk and neon on it. Boot is cold, the desktop is warm, and the mascot is the
+# one thing that crosses between them unchanged.
+
+# ---------------------------------------------------------------------------
+# Warm: the desktop, the file manager, the web console.
+# These hexes are unchanged from the two hand-written stylesheets they replace,
+# so applying the generated files repaints nothing on a machine already themed.
+# ---------------------------------------------------------------------------
+[warm]
+# The four values Farhan specified are marked. Everything else on this list is
+# derived from them by lightening or darkening, so the set stays one family
+# instead of four fixed points with strangers between them.
+screen      = "#e0c4a8"  # SPECIFIED. Window and content background.
+screen_lit  = "#f0dcc4"  # a lit surface: entries, hovered buttons
+screen_dim  = "#c4a48a"  # a recessed one: bevel shadow, pressed keys
+
+bezel       = "#b27958"  # SPECIFIED. Title bars and the sidebar: rust.
+bezel_light = "#c9906e"
+bezel_dark  = "#7d4f38"
+
+ink         = "#1e1614"  # SPECIFIED. Text, and the darkest thing on a lit surface.
+ink_soft    = "#4a3a33"  # secondary text
+ink_faint   = "#8a7266"  # rules, disabled text, unknown states
+
+blush       = "#f0a8a8"  # the mascot's cheeks, and the close button
+blush_deep  = "#d97f83"
+room        = "#2a1f1c"  # behind everything: the wall the machine sits against
+
+good        = "#4a7c59"
+warn        = "#c8873a"
+bad         = "#b4453f"
+outline     = "#1e1614"  # SPECIFIED. Every pixel edge -- a near-black with the
+                         # warmth of the rest, not a pure black borrowed from
+                         # somewhere else.
+
+# ---------------------------------------------------------------------------
+# Cold: the loader, the boot splash, the logo.
+# ---------------------------------------------------------------------------
+[cold]
+void        = "#0b0e1f"  # the screen before anything is drawn on it
+void_lit    = "#141a33"
+board       = "#1e3a2f"  # chalkboard green
+board_dark  = "#162b23"
+chalk       = "#e8f0e4"
+chalk_dim   = "#9fb3a4"
+
+# The neon run, in spectrum order. Used for the wordmark gradient, the loading
+# bar and the ring, always sampled in this sequence so the three never disagree
+# about which end is which.
+neon_cyan    = "#63e8ff"
+neon_teal    = "#4ce0b0"
+neon_lime    = "#8ef06a"
+neon_amber   = "#ffcc4d"
+neon_orange  = "#ff9a3c"
+neon_pink    = "#ff86c8"
+neon_magenta = "#e05cff"
+neon_violet  = "#8a6cff"
+
+# ---------------------------------------------------------------------------
+# The city on the wallpaper.
+#
+# Three depth bands and nothing between them. Aerial perspective in pixel art is
+# a matter of how few colours you can get away with per band: the far towers get
+# two, the middle four, the near ones six. Blending them into a continuous
+# gradient would cost the depth, not add to it.
+#
+# The buildings are rust and earth; the sky behind them is a cold navy. That
+# opposition is the whole picture, and every neon on top of it is an accent on
+# one side or the other.
+# ---------------------------------------------------------------------------
+[city]
+sky_high    = "#080b1c"  # zenith
+sky_low     = "#1b1a3a"  # the glow the city throws back up at it
+
+far         = "#191e42"  # towers at the back: silhouettes with a few lit rooms
+far_lit     = "#232a55"
+
+mid         = "#6b4433"  # rust: the body of the city
+mid_lit     = "#8a5a44"
+mid_dark    = "#4a2d22"
+
+near        = "#33211c"  # rooftops in the foreground, almost in shadow
+near_lit    = "#4a2f24"
+
+rail        = "#59628c"  # the elevated track
+rail_lit    = "#8d97c8"
+
+lit_warm    = "#ffcc4d"  # a window with someone behind it
+lit_cool    = "#63e8ff"  # a window with a screen behind it
+holo        = "#63e8ff"  # projected interfaces, and the beam that carries them
+smog        = "#2a2447"  # cloud, where the beacon catches it
+
+# ---------------------------------------------------------------------------
+# The mascot. Its own set: it appears on both the cold and the warm surfaces and
+# must be the same robot in each, so its colours answer to neither room.
+# ---------------------------------------------------------------------------
+[mascot]
+outline     = "#0b0d1a"
+silver      = "#cdd6e8"
+silver_lit  = "#ffffff"
+silver_dim  = "#9aa6c4"
+silver_dark = "#6b7799"
+visor       = "#0e2a4a"
+visor_lit   = "#1b4a72"
+eye         = "#63e8ff"
+eye_core    = "#ffffff"
+accent      = "#2f6df0"
+accent_dark = "#1b3f9e"
+trim        = "#ff9a3c"  # the helmet stripe and the boot flash
+cheek       = "#f0a8a8"
+
+# ---------------------------------------------------------------------------
+# The kernel console.
+#
+# vt(4) takes sixteen palette entries as loader tunables. Filling them is what
+# makes the theme reach the part of the boot no desktop can touch: the messages
+# the kernel prints before there is a userland to style. The slot numbers are
+# the ANSI ones, so anything that prints colour to the console -- rc scripts,
+# hajimectl, a panicking kernel -- lands in this palette without being asked to.
+#
+# Slot 7 is the default foreground and slot 0 the default background, which is
+# why they are the cream and the void rather than a literal white and black.
+# ---------------------------------------------------------------------------
+[vt]
+0  = { name = "black",          color = "cold.void" }
+1  = { name = "red",            color = "warm.bad" }
+2  = { name = "green",          color = "warm.good" }
+3  = { name = "brown",          color = "warm.warn" }
+4  = { name = "blue",           color = "mascot.accent_dark" }
+5  = { name = "magenta",        color = "warm.blush_deep" }
+6  = { name = "cyan",           color = "cold.neon_teal" }
+7  = { name = "white",          color = "warm.screen" }
+8  = { name = "bright black",   color = "warm.room" }
+9  = { name = "bright red",     color = "cold.neon_pink" }
+10 = { name = "bright green",   color = "cold.neon_lime" }
+11 = { name = "bright brown",   color = "cold.neon_amber" }
+12 = { name = "bright blue",    color = "mascot.accent" }
+13 = { name = "bright magenta", color = "cold.neon_magenta" }
+14 = { name = "bright cyan",    color = "cold.neon_cyan" }
+15 = { name = "bright white",   color = "warm.screen_lit" }

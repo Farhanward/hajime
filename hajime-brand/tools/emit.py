@@ -1,0 +1,593 @@
+"""Write every generated file into out/.
+
+One command produces the whole set: the four full-screen pictures, the loader's
+logo in both the form it needs when there is a framebuffer and the form it needs
+when there is not, the icons, the two stylesheets, the console palette, and the
+console art.
+
+`--check` regenerates into a temporary directory and compares. It is what the CI
+job runs, and it answers one question: does the committed art still match the
+code that claims to produce it? Assets and generator drifting apart is the usual
+way a pipeline like this rots.
+
+    python tools/emit.py            write out/
+    python tools/emit.py --check    fail if out/ is stale
+"""
+
+from __future__ import annotations
+
+import filecmp
+import shutil
+import sys
+import tempfile
+from pathlib import Path
+
+from PIL import Image
+
+import desktop as desktop_scene
+import mascot
+import px
+import scenes
+from brand import brand, data as brand_data
+
+ROOT = Path(__file__).resolve().parent.parent
+OUT = ROOT / "out"
+
+# The sixteen console slots, in the order vt(4) numbers them. Emitting them from
+# the palette rather than by hand is the point: the kernel console and the web
+# console cannot disagree about what red is if both are printed from here.
+def vt_slots() -> list[tuple[int, str, str]]:
+    rows = []
+    for num, entry in sorted(px.palette()["vt"].items(), key=lambda kv: int(kv[0])):
+        rows.append((int(num), entry["name"], px.hex_of(entry["color"])))
+    return rows
+
+
+# --- the ASCII and ANSI forms of the mascot --------------------------------
+
+# Standard ANSI foreground codes, and the palette colour each will actually be
+# once loader.conf has set the console palette. Written as (code, rgb) so the
+# quantiser can pick the nearest without knowing about escape sequences.
+def ansi_table() -> list[tuple[str, tuple[int, int, int]]]:
+    # Bright colours are written as `3X;1` rather than `9X`. Both reach a modern
+    # terminal, but the loader's console is not one, and the logos FreeBSD ships
+    # use the older form -- which is the only evidence available that it works
+    # there.
+    table = []
+    for num, _name, hexv in vt_slots():
+        code = f"3{num}" if num < 8 else f"3{num - 8};1"
+        table.append((code, px.C(hexv)[:3]))
+    return table
+
+
+# The part of the console palette the robot is made of.
+#
+# A sixteen-colour palette built for terminal output has no mid grey in it, so
+# the nearest match to the mascot's shadowed silver came out pink, and to its
+# darkest silver, green. Restricting the search to the colours the sprite
+# actually uses turns a wrong answer into a rounded one.
+MASCOT_INK = ("30", "37", "37;1", "34", "34;1", "36;1", "33;1", "31;1", "30;1")
+
+
+def _nearest(rgb, table):
+    best, best_d = table[0][0], 1 << 30
+    for code, ref in table:
+        d = sum((a - b) ** 2 for a, b in zip(rgb, ref))
+        if d < best_d:
+            best, best_d = code, d
+    return best
+
+
+def block_art(img: Image.Image, cols: int, rows: int, escape: str = "\\027",
+              allow: tuple[str, ...] = MASCOT_INK) -> list[str]:
+    """A picture as coloured full-block characters, one per character cell.
+
+    Character cells are twice as tall as they are wide, so the source is
+    squeezed vertically by two on the way in and comes out the right shape.
+
+    `escape` is the literal text used for ESC: Lua wants \\027 inside a string,
+    a shell script wants a real byte.
+    """
+    table = [row for row in ansi_table() if not allow or row[0] in allow]
+    small = img.resize((cols, rows), Image.NEAREST)
+    px_ = small.load()
+    lines = []
+    for y in range(rows):
+        line, current = [], None
+        for x in range(cols):
+            r, g, b, a = px_[x, y]
+            if a < 100:
+                if current is not None:
+                    line.append(f"{escape}[m")
+                    current = None
+                line.append(" ")
+                continue
+            code = _nearest((r, g, b), table)
+            if code != current:
+                line.append(f"{escape}[{code}m")
+                current = code
+            line.append("█")
+        line.append(f"{escape}[m")
+        lines.append("".join(line))
+    return lines
+
+
+def loader_lua() -> str:
+    """`/boot/lua/gfx-hajime.lua`, in the shape FreeBSD 14 expects.
+
+    Two forms of the same logo. `fb` is a PNG the loader scales into a box of
+    text rows, used when it is talking to a framebuffer. `ascii` is block
+    characters in the sixteen console colours, used when it is talking to a
+    serial line -- which is what this machine will be talked to over if the
+    graphics ever fail to come up, so it has to be the case that works.
+    """
+    art = block_art(mascot.head(), cols=26, rows=10)
+    version = brand("system.version")
+    body = "\n".join(f'\t\t\t\t"{line}",' for line in art)
+    return f"""--
+-- Hajime OS loader graphics. Generated by hajime-brand/tools/emit.py --
+-- edit the generator, not this file.
+--
+-- Installed as /boot/lua/gfx-hajime.lua and selected with, in loader.conf:
+--
+--     loader_logo="hajime"
+--     loader_brand="hajime"
+--
+-- FreeBSD's drawer.lua looks for gfx-<name>.lua on the loader's module path
+-- when loader_logo names something it does not already know, so the file name
+-- is the mechanism and must keep this shape.
+--
+-- The PNG is used when the loader has a framebuffer; the block art below is
+-- used when it does not, which includes every serial console. Both are the same
+-- robot, so a machine being fixed over a serial cable still says who it is.
+--
+return {{
+\tlogo = {{
+\t\tascii = {{
+\t\t\timage = {{
+{body}
+\t\t\t}},
+\t\t\trequires_color = true,
+\t\t\tshift = {{x = 6, y = 3}},
+\t\t}},
+\t\tfb = {{
+\t\t\timage = "/boot/images/hajime-logo.png",
+\t\t\twidth = 15,
+\t\t\tshift = {{x = 2, y = -1}},
+\t\t}},
+\t}},
+\tbrand = {{
+\t\tascii = {{
+\t\t\timage = {{
+\t\t\t\t"\\027[36;1m _  _         _              \\027[m",
+\t\t\t\t"\\027[36;1m| || |__ _ _ (_)_ __  ___    \\027[m",
+\t\t\t\t"\\027[36;1m| __ / _` | || | '  \\\\/ -_)   \\027[m",
+\t\t\t\t"\\027[36;1m|_||_\\\\__,_||_||_|_|_|_\\\\___|   \\027[m",
+\t\t\t\t"\\027[33;1m         O S  {version}          \\027[m",
+\t\t\t}},
+\t\t\trequires_color = false,
+\t\t\tshift = {{x = 0, y = 0}},
+\t\t}},
+\t}},
+}}
+"""
+
+
+def console_art() -> str:
+    """The mascot for the text console, with real escape bytes in it."""
+    lines = block_art(mascot.head(), cols=24, rows=12, escape="\033")
+    return "\n".join("  " + line for line in lines) + "\n"
+
+
+def console_credits() -> str:
+    """The repository, the name and the ask, for the end of the boot.
+
+    Generated rather than typed into the rc script, because the rc script would
+    then be a second place these three strings live, and the second place is
+    always the one that stays wrong.
+    """
+    lines = [
+        f"  \033[36m{brand('author.repo')}\033[m",
+        f"  built by {brand('author.name')}",
+    ]
+    if brand("support.url"):
+        lines += [
+            "",
+            f"  \033[33;1m{brand('support.ask_en')}\033[m",
+            f"  \033[33m{brand('support.url')}\033[m",
+        ]
+    return "\n".join(lines) + "\n"
+
+
+def motd() -> str:
+    """The block written into /etc/motd.template.
+
+    Plain text: motd is read over ssh from clients whose terminals this system
+    knows nothing about, and colour escapes in a message of the day are how you
+    end up with `ESC[36m` printed literally in somebody's log.
+    """
+    lines = [
+        f"{brand('system.name')} {brand('system.version')} -- {brand('system.tagline_en')}",
+        "",
+        f"  {brand('author.repo')}",
+        f"  built by {brand('author.name')}",
+    ]
+    if brand("support.url"):
+        lines += [
+            "",
+            f"  {brand('support.ask_en')}",
+            f"  {brand('support.cta_en')}: {brand('support.url')}",
+        ]
+    lines += [
+        "",
+        "  hajimectl status     what is running",
+        "  hajimectl check      what would stop it starting",
+        "  http://127.0.0.1:8088/   the same, in a browser",
+    ]
+    return "\n".join(lines) + "\n"
+
+
+# --- stylesheets and console palette ---------------------------------------
+
+
+def palette_css() -> str:
+    lines = [
+        "/* Generated by hajime-brand/tools/emit.py from palette.toml.",
+        " * Edit the palette, not this file: the desktop, the kernel console and",
+        " * this stylesheet are all printed from the same table, which is the only",
+        " * reason they agree about what red means.",
+        " */",
+        ":root {",
+    ]
+    for section in ("warm", "cold", "mascot"):
+        lines.append(f"  /* {section} */")
+        for name, value in px.palette()[section].items():
+            prefix = "" if section == "warm" else f"{section}-"
+            lines.append(f"  --{prefix}{name.replace('_', '-')}: {value};")
+    lines.append("}")
+    return "\n".join(lines) + "\n"
+
+
+def palette_gtk() -> str:
+    lines = [
+        "/* Generated by hajime-brand/tools/emit.py from palette.toml.",
+        " * Included by hajime_theme.css. Edit the palette, not this file.",
+        " */",
+    ]
+    for section in ("warm", "cold", "mascot"):
+        lines.append(f"/* {section} */")
+        for name, value in px.palette()[section].items():
+            prefix = "" if section == "warm" else f"{section}_"
+            lines.append(f"@define-color {prefix}{name} {value};")
+    return "\n".join(lines) + "\n"
+
+
+def loader_conf_vt() -> str:
+    """The console palette as loader tunables.
+
+    This is the deepest the theme goes. vt(4) reads these before the kernel
+    prints its first line, so every message from device probe to panic is in
+    the system's own colours rather than in the default sixteen.
+    """
+    out = [
+        "# Generated by hajime-brand/tools/emit.py from palette.toml.",
+        "# Written into /boot/loader.conf by hajime-brand/install_theme.sh, inside",
+        "# a marked block, so a second run replaces it instead of stacking a copy.",
+        "#",
+        "# Slot 7 is the console's default foreground and slot 0 its background,",
+        "# which is why they are the cream and the void and not white and black.",
+        "",
+    ]
+    for num, name, hexv in vt_slots():
+        out.append(f'kern.vt.color.{num}.rgb="{hexv}"   # {name}')
+    out += [
+        "",
+        "# A 16x32 VGA face: at 1080p the 8x16 default is a line of ants, and this",
+        "# is the same grid the pixel art is drawn on.",
+        'screen.font="vgarom-16x32"',
+        "",
+        "# The loader's own screen.",
+        'loader_logo="hajime"',
+        'loader_brand="hajime"',
+        f'loader_menu_title="{brand("system.name")} {brand("system.version")}"',
+        'loader_color="YES"',
+        "",
+    ]
+    return "\n".join(out)
+
+
+def wayfire_colors() -> str:
+    """Decoration colours as the floats wayfire wants, so nobody converts by hand."""
+    def floats(ref):
+        r, g, b, _ = px.C(ref)
+        return f"{r / 255:.3f} {g / 255:.3f} {b / 255:.3f} 1.0"
+
+    return "\n".join([
+        "# Generated by hajime-brand/tools/emit.py from palette.toml.",
+        "# Paste into the [decoration] and [core] sections of wayfire.ini.",
+        f"active_color = {floats('warm.bezel')}",
+        f"inactive_color = {floats('warm.bezel_dark')}",
+        f"background_color = {floats('cold.void')}",
+        "",
+    ])
+
+
+def brand_rs() -> str:
+    """brand.toml as Rust constants, for the console to include.
+
+    The console is the one surface that renders these strings from compiled code
+    rather than from a file it reads at run time. Rather than let it keep its own
+    copy -- which is a copy that will be the last one corrected -- it includes
+    this, and the check job fails if it drifts from the TOML.
+    """
+    fields = [
+        ("NAME", "system.name"),
+        ("WORDMARK", "system.wordmark"),
+        ("VERSION", "system.version"),
+        ("TAGLINE_EN", "system.tagline_en"),
+        ("TAGLINE_AR", "system.tagline_ar"),
+        ("REPO", "author.repo"),
+        ("AUTHOR", "author.name"),
+        ("SPONSOR_URL", "support.url"),
+        ("SPONSOR_CTA_EN", "support.cta_en"),
+        ("SPONSOR_CTA_AR", "support.cta_ar"),
+    ]
+    lines = [
+        "// Generated by hajime-brand/tools/emit.py from brand.toml.",
+        "// Included by hajime-console/src/lib.rs. Edit brand.toml, not this file.",
+        "//",
+        "// An empty value means the system has no such thing, and the surface that",
+        "// would have shown it drops the line rather than printing a placeholder.",
+        "",
+    ]
+    for const, key in fields:
+        value = brand(key).replace("\\", "\\\\").replace('"', '\\"')
+        lines.append(f'pub const {const}: &str = "{value}";')
+    return "\n".join(lines) + "\n"
+
+
+def mark_svg(scale: int = 1) -> str:
+    """The mascot's head as an SVG of rectangles, one run of colour per rect.
+
+    For the web console, which is one HTML file and no image requests. Runs are
+    merged along each row, which takes it from a rectangle per pixel to about a
+    fifth of that.
+    """
+    img = mascot.head()
+    w, h = img.size
+    p = img.load()
+    rects = []
+    for y in range(h):
+        x = 0
+        while x < w:
+            r, g, b, a = p[x, y]
+            if a < 100:
+                x += 1
+                continue
+            run = 1
+            while x + run < w and p[x + run, y] == (r, g, b, a):
+                run += 1
+            rects.append(f'<rect x="{x}" y="{y}" width="{run}" height="1" '
+                         f'fill="#{r:02x}{g:02x}{b:02x}"/>')
+            x += run
+    body = "\n".join(rects)
+    return (
+        f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {w} {h}" '
+        f'width="{w * scale}" height="{h * scale}" shape-rendering="crispEdges" '
+        f'role="img" aria-label="{brand("system.name")}">\n{body}\n</svg>\n'
+    )
+
+
+# --- the loader's PNG ------------------------------------------------------
+
+
+def loader_logo_png() -> Image.Image:
+    """The lockup the loader scales into fifteen rows of its menu.
+
+    Transparent behind: the loader draws it onto whatever the firmware left on
+    the screen, and a black rectangle around it looks like a hole.
+    """
+    sprite = mascot.sprite(scale=3, outline=True)
+    mark = px.text(brand("system.wordmark"), 16, "warm.screen_lit", px.FONT_PIXEL)
+    mark = px.tint_ramp(mark, px.neon_ramp()[:6])
+    mark = px.with_outline(mark, "mascot.outline", 1)
+    mark = px.upscale(mark, 2)
+
+    w = max(sprite.width, mark.width) + 24
+    h = sprite.height + mark.height + 26
+    img = px.new(w, h)
+    px.paste(img, sprite, (w - sprite.width) // 2, 8)
+    px.paste(img, mark, (w - mark.width) // 2, sprite.height + 16)
+    return img
+
+
+# --- writing ---------------------------------------------------------------
+
+
+def write_all(out: Path) -> list[Path]:
+    (out / "icons").mkdir(parents=True, exist_ok=True)
+    written: list[Path] = []
+
+    def save(img: Image.Image, name: str):
+        path = out / name
+        img.save(path)
+        written.append(path)
+
+    def text_file(content: str, name: str):
+        path = out / name
+        path.write_text(content, encoding="utf-8", newline="\n")
+        written.append(path)
+
+    px.check_fonts()
+
+    save(scenes.board().convert("RGB"), "boot-1920x1080.png")
+    save(scenes.splash().convert("RGB"), "splash-1920x1080.png")
+    save(desktop_scene.wallpaper().convert("RGB"), "wallpaper-1920x1080.png")
+    save(desktop_scene.desktop().convert("RGB"), "preview-desktop-1920x1080.png")
+
+    save(loader_logo_png(), "hajime-logo.png")
+
+    head = mascot.head()
+    for size in MARK_SIZES:
+        # Whole-number scaling only, then centred on a square. A 27-pixel head
+        # resampled to 16 is mush; the head cropped and scaled by an integer
+        # stays a face.
+        factor = max(1, size // head.width)
+        art = px.upscale(head, factor) if factor > 1 else head
+        if art.width > size or art.height > size:
+            art = art.resize((min(size, art.width), min(size, art.height)), Image.NEAREST)
+        tile = px.new(size, size)
+        px.paste(tile, art, (size - art.width) // 2, (size - art.height) // 2)
+        save(tile, f"mark-{size}.png")
+
+    for name, _ar, _en in desktop_scene.LAUNCHERS:
+        for size in ICON_SIZES:
+            glyph = px.icon(name, size - 4, "warm.ink")
+            tile = px.new(size, size, "warm.screen_lit")
+            px.rect(tile, (0, 0, size - 1, size - 1), outline="warm.outline")
+            px.bevel(tile, (1, 1, size - 2, size - 2), "#ffffff", "warm.screen_dim")
+            px.paste(tile, glyph, 2, 2)
+            save(tile, f"icons/{name}-{size}.png")
+
+    text_file(palette_css(), "palette.css")
+    text_file(palette_gtk(), "palette-gtk.css")
+    text_file(loader_conf_vt(), "loader.conf.vt")
+    text_file(wayfire_colors(), "wayfire.colors")
+    text_file(loader_lua(), "gfx-hajime.lua")
+    text_file(console_art(), "console-logo.ansi")
+    text_file(console_credits(), "console-credits.ansi")
+    text_file(motd(), "motd.hajime")
+    text_file(mark_svg(), "mark.svg")
+    text_file(brand_rs(), "brand.rs")
+
+    return written
+
+
+# What the pictures are supposed to be, for the check below: name and size.
+EXPECTED_IMAGES = {
+    "boot-1920x1080.png": (1920, 1080),
+    "splash-1920x1080.png": (1920, 1080),
+    "wallpaper-1920x1080.png": (1920, 1080),
+    "preview-desktop-1920x1080.png": (1920, 1080),
+    "mark-16.png": (16, 16),
+    "mark-256.png": (256, 256),
+}
+
+
+def write_text(out: Path) -> list[str]:
+    """Just the text artefacts. Everything here is deterministic."""
+    out.mkdir(parents=True, exist_ok=True)
+    produced = {
+        "palette.css": palette_css(),
+        "palette-gtk.css": palette_gtk(),
+        "loader.conf.vt": loader_conf_vt(),
+        "wayfire.colors": wayfire_colors(),
+        "gfx-hajime.lua": loader_lua(),
+        "console-logo.ansi": console_art(),
+        "console-credits.ansi": console_credits(),
+        "motd.hajime": motd(),
+        "mark.svg": mark_svg(),
+        "brand.rs": brand_rs(),
+    }
+    for name, content in produced.items():
+        (out / name).write_text(content, encoding="utf-8", newline="\n")
+    return list(produced)
+
+
+MARK_SIZES = (16, 24, 32, 48, 64, 128, 256)
+ICON_SIZES = (24, 48)
+
+
+def expected_files() -> set[str]:
+    """Every name write_all writes, without writing any of them.
+
+    Needed to answer the question the file-by-file comparison cannot: what is in
+    out/ that the generator no longer produces? Dropping three launchers left
+    six icons behind, committed and dead, and nothing noticed because every file
+    that was supposed to be there still was.
+    """
+    names = {
+        "boot-1920x1080.png", "splash-1920x1080.png", "wallpaper-1920x1080.png",
+        "preview-desktop-1920x1080.png", "hajime-logo.png", "palette.css",
+        "palette-gtk.css", "loader.conf.vt", "wayfire.colors", "gfx-hajime.lua",
+        "console-logo.ansi", "console-credits.ansi", "motd.hajime", "mark.svg",
+        "brand.rs",
+    }
+    names |= {f"mark-{size}.png" for size in MARK_SIZES}
+    names |= {
+        f"icons/{name}-{size}.png"
+        for name, _ar, _en in desktop_scene.LAUNCHERS
+        for size in ICON_SIZES
+    }
+    return names
+
+
+def check() -> int:
+    """Is out/ still what the code produces?
+
+    Two different questions, checked two different ways.
+
+    The text -- the palettes, the loader's Lua, the console art, the Rust
+    constants -- is compared byte for byte. All of it is drawn by this code
+    alone and comes out identical on any machine, so a difference means someone
+    edited a generated file by hand or changed the generator without re-running
+    it. Both are worth failing for.
+
+    The pictures are checked for presence and size only, and deliberately. Their
+    lettering is rasterised by whatever FreeType the machine has, and two
+    versions of FreeType put a pixel in a different place. Comparing those bytes
+    across a developer's machine and a CI runner would fail on every run for a
+    reason nobody can fix, which is how a check stops being read.
+    """
+    stale = []
+    with tempfile.TemporaryDirectory() as tmp:
+        fresh = Path(tmp)
+        for name in write_text(fresh):
+            committed = OUT / name
+            if not committed.exists():
+                stale.append(f"missing: out/{name}")
+            elif not filecmp.cmp(fresh / name, committed, shallow=False):
+                stale.append(f"differs: out/{name}")
+
+    for name, size in EXPECTED_IMAGES.items():
+        path = OUT / name
+        if not path.exists():
+            stale.append(f"missing: out/{name}")
+            continue
+        with Image.open(path) as im:
+            if im.size != size:
+                stale.append(f"wrong size: out/{name} is {im.size}, expected {size}")
+
+    # And the other direction: anything here the generator would not write.
+    expected = expected_files()
+    for path in sorted(OUT.rglob("*")):
+        if path.is_dir():
+            continue
+        rel = path.relative_to(OUT).as_posix()
+        if rel not in expected:
+            stale.append(f"left over: out/{rel}")
+
+    if stale:
+        print("out/ does not match what the generator produces:")
+        for line in stale:
+            print(f"  {line}")
+        print("\nRun: python hajime-brand/tools/emit.py")
+        return 1
+    print("out/ matches the generator")
+    return 0
+
+
+def main(argv: list[str]) -> int:
+    if "--check" in argv:
+        return check()
+    OUT.mkdir(parents=True, exist_ok=True)
+    written = write_all(OUT)
+    for path in written:
+        print(f"  {path.relative_to(ROOT)}")
+    print(f"\n{len(written)} file(s) written for {brand_data()['system']['name']}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
+    _ = shutil

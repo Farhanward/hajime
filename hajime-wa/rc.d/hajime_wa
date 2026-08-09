@@ -1,0 +1,73 @@
+#!/bin/sh
+#
+# PROVIDE: hajime_wa
+# REQUIRE: LOGIN NETWORKING
+# KEYWORD: shutdown
+#
+# Hajime WhatsApp gateway. Needs hajime_wa_bridge to be useful.
+#
+# rc.conf settings and their defaults:
+#
+#   hajime_wa_enable="YES"
+#   hajime_wa_bind="127.0.0.1:3000"
+#   hajime_wa_bridge="http://127.0.0.1:3001"
+#   hajime_wa_secrets="/usr/local/etc/hajime/secrets"
+#
+# The token is read from a file, not from rc.conf, so it does not appear in
+# `ps` output or in a world-readable config.
+
+. /etc/rc.subr
+
+name="hajime_wa"
+rcvar="hajime_wa_enable"
+
+load_rc_config $name
+
+: ${hajime_wa_enable:="NO"}
+: ${hajime_wa_user:="hajime"}
+: ${hajime_wa_bind:="127.0.0.1:3000"}
+: ${hajime_wa_secrets:="/usr/local/etc/hajime/secrets"}
+: ${hajime_wa_history:="/vault/hajime/hajime_wa.jsonl"}
+: ${hajime_wa_log:="/var/log/hajime_wa.log"}
+: ${hajime_wa_bridge:="http://127.0.0.1:3001"}
+
+procname="/usr/local/bin/hajime-wa"
+# The pidfile lives under /var/run/hajime rather than directly in /var/run.
+# rc.subr runs this command through `su -m ${name}_user`, so daemon(8) executes
+# unprivileged, and /var/run itself is writable only by root. The directory is
+# created in prestart, which runs before that su and therefore still as root.
+rundir="/var/run/hajime"
+pidfile="${rundir}/${name}.pid"
+
+start_precmd="${name}_prestart"
+command="/usr/sbin/daemon"
+command_args="-f -p ${pidfile} -o ${hajime_wa_log} ${procname}"
+
+hajime_wa_prestart()
+{
+	install -d -o "${hajime_wa_user}" -g "${hajime_wa_user}" -m 755 \
+		"${rundir}" || err 1 "cannot create ${rundir}"
+
+	[ -x "${procname}" ] || err 1 "${procname} is missing or not executable"
+
+	export HAJIME_WA_BIND="${hajime_wa_bind}"
+	export HAJIME_WA_SECRETS="${hajime_wa_secrets}"
+	export HAJIME_WA_HISTORY="${hajime_wa_history}"
+	export HAJIME_WA_BRIDGE="${hajime_wa_bridge}"
+
+	# Refuse a secret directory anyone can read. The binary checks this too;
+	# failing here gives a clearer message than a stack of Rust errors.
+	if [ -d "${hajime_wa_secrets}" ]; then
+		_mode=$(stat -f "%Lp" "${hajime_wa_secrets}")
+		case "${_mode}" in
+		*[2367])
+			err 1 "${hajime_wa_secrets} is mode ${_mode}; run 'chmod 700' on it"
+			;;
+		esac
+	fi
+
+	install -d -o "${hajime_wa_user}" -g "${hajime_wa_user}" -m 750 		"$(dirname "${hajime_wa_history}")" 2>/dev/null || true
+	install -o "${hajime_wa_user}" -g "${hajime_wa_user}" -m 640 		/dev/null "${hajime_wa_log}" 2>/dev/null || true
+}
+
+run_rc_command "$1"

@@ -1,0 +1,56 @@
+#!/bin/sh
+# =============================================================================
+# Switch the display language of a user's session.
+#
+#   hajime-lang            show what each user is set to
+#   hajime-lang ar         put the current user into the Arabic class
+#   hajime-lang en <user>  put <user> into the English class
+#
+# It changes a login class, which is where a Unix keeps this. The next login
+# picks it up; the session already running does not, the same as everywhere
+# else that offers a display language.
+#
+# What it does not change: the loader's screen and the kernel console. Those are
+# English in both classes because vt(4) cannot shape Arabic, and it says so
+# rather than pretending the setting reaches further than it does.
+# =============================================================================
+
+set -u
+
+usage() { sed -n '3,14p' "$0" | sed 's/^# \{0,1\}//'; }
+
+LANG_ARG="${1:-}"
+USER_ARG="${2:-${SUDO_USER:-$(id -un)}}"
+
+case "$LANG_ARG" in
+    "")
+        printf '%-16s %-14s %s\n' USER CLASS LANGUAGE
+        while IFS=: read -r name _ _ _ class _; do
+            case "$class" in
+                hajime-ar) printf '%-16s %-14s %s\n' "$name" "$class" "العربية (ar_SA.UTF-8)" ;;
+                hajime-en) printf '%-16s %-14s %s\n' "$name" "$class" "English (en_US.UTF-8)" ;;
+            esac
+        done < /etc/passwd
+        exit 0 ;;
+    ar|en) CLASS="hajime-${LANG_ARG}" ;;
+    -h|--help) usage; exit 0 ;;
+    *) echo "unknown language: ${LANG_ARG}. Use ar or en." >&2; exit 1 ;;
+esac
+
+[ "$(id -u)" -eq 0 ] || { echo "run as root: this changes a login class" >&2; exit 2; }
+
+if ! grep -q "^${CLASS}:" /etc/login.conf 2>/dev/null; then
+    echo "no ${CLASS} class in /etc/login.conf." >&2
+    echo "Run hajime-brand/install_theme.sh first; it adds both classes." >&2
+    exit 1
+fi
+
+if ! id "$USER_ARG" >/dev/null 2>&1; then
+    echo "no such user: ${USER_ARG}" >&2
+    exit 1
+fi
+
+pw usermod "$USER_ARG" -L "$CLASS" || { echo "pw usermod failed" >&2; exit 1; }
+
+echo "${USER_ARG} is now in ${CLASS}."
+echo "It applies at the next login. To check from that session:  locale"

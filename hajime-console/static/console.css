@@ -1,0 +1,274 @@
+/* Hajime console.
+ *
+ * The colours are not here. They arrive from hajime-brand/out/palette.css,
+ * which the binary concatenates in front of this file when it serves
+ * /console.css -- one request, and one table of colours shared with the
+ * desktop, the wallpaper and the kernel console. This file is only the part
+ * that is this page's own business.
+ *
+ * Everything is drawn with borders and gradients rather than images, so the
+ * whole interface is one file and stays sharp at any zoom. Pixel edges are kept
+ * by refusing rounded corners and by using box-shadow steps instead of blur.
+ */
+
+:root {
+  --step: 4px;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  padding: calc(var(--step) * 4);
+  background: var(--room);
+  color: var(--ink);
+  /* Sans for the prose, monospace only for the machine's own output further
+   * down. A whole page of a terminal face is a page nobody finishes, and Arabic
+   * has no monospace worth the name. */
+  font-family: "Almarai", ui-sans-serif, system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+  /* The whole thing is a pixel-art scene: never smooth an upscaled edge. */
+  image-rendering: pixelated;
+}
+
+body[dir="rtl"] { direction: rtl; }
+
+/* The CRT cabinet ------------------------------------------------------- */
+
+.cabinet {
+  max-width: 1100px;
+  margin: 0 auto;
+  background: var(--bezel);
+  border: var(--step) solid var(--outline);
+  box-shadow:
+    inset calc(var(--step) * -1) calc(var(--step) * -1) 0 var(--bezel-dark),
+    inset var(--step) var(--step) 0 var(--bezel-light),
+    calc(var(--step) * 2) calc(var(--step) * 2) 0 rgba(0, 0, 0, .45);
+  padding: calc(var(--step) * 3);
+}
+
+.screen {
+  background: var(--screen);
+  border: var(--step) solid var(--outline);
+  box-shadow:
+    inset calc(var(--step) * -1) calc(var(--step) * -1) 0 var(--screen-dim),
+    inset var(--step) var(--step) 0 var(--screen-lit);
+  padding: calc(var(--step) * 4);
+  position: relative;
+  overflow: hidden;
+}
+
+/* Scanlines. Kept faint: the point is texture, not a legibility tax. */
+.screen::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(26, 31, 77, .05) 0 1px,
+    transparent 1px 3px
+  );
+}
+
+/* Header ---------------------------------------------------------------- */
+
+.title {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--step) * 3);
+  margin: 0 0 calc(var(--step) * 3);
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: .04em;
+}
+
+.title .mark {
+  display: inline-flex;
+  width: 34px;
+  flex: none;
+}
+/* The mark is generated pixel art: never let a browser smooth it. */
+.title .mark svg {
+  width: 100%;
+  height: auto;
+  image-rendering: pixelated;
+}
+
+.headline {
+  margin: 0 0 calc(var(--step) * 4);
+  padding: calc(var(--step) * 2) calc(var(--step) * 3);
+  border: 3px solid var(--outline);
+  background: var(--screen-lit);
+  font-weight: 700;
+}
+.headline.is-good { border-inline-start: calc(var(--step) * 3) solid var(--good); }
+.headline.is-warn { border-inline-start: calc(var(--step) * 3) solid var(--warn); }
+.headline.is-bad  { border-inline-start: calc(var(--step) * 3) solid var(--bad); }
+
+/* Panels ---------------------------------------------------------------- */
+
+.panels {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: calc(var(--step) * 3);
+}
+
+.panel {
+  border: 3px solid var(--outline);
+  background: var(--screen-lit);
+  box-shadow: inset 0 calc(var(--step) * -1) 0 var(--screen-dim);
+  min-width: 0;
+}
+
+.panel > h2 {
+  margin: 0;
+  padding: calc(var(--step) * 2) calc(var(--step) * 3);
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  background: var(--bezel);
+  color: var(--screen-lit);
+  border-bottom: 3px solid var(--outline);
+  text-shadow: 1px 1px 0 var(--bezel-dark);
+}
+
+.panel > .body {
+  padding: calc(var(--step) * 3);
+  /* Wide content scrolls inside its panel; the page itself never does. */
+  overflow-x: auto;
+}
+
+/* Rows ------------------------------------------------------------------ */
+
+.row {
+  display: flex;
+  align-items: baseline;
+  gap: calc(var(--step) * 2);
+  padding: calc(var(--step) * 1.5) 0;
+  border-bottom: 1px dashed var(--ink-faint);
+}
+.row:last-child { border-bottom: 0; }
+
+.row .name {
+  font-weight: 700;
+  flex: 1;
+  min-width: 0;
+  font-family: ui-monospace, "Cascadia Mono", "DejaVu Sans Mono", monospace;
+}
+.row .meta { color: var(--ink-soft); font-size: 12px; white-space: nowrap; }
+
+/* State chips. A square block, not a coloured dot: colour alone is not a
+ * signal for everyone, so each state also carries a distinct glyph. */
+.chip {
+  display: inline-block;
+  padding: 1px calc(var(--step) * 1.5);
+  border: 2px solid var(--outline);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--screen-lit);
+  flex: none;
+}
+.chip.up        { background: var(--good); }
+.chip.down      { background: var(--bad); }
+.chip.unhealthy { background: var(--warn); }
+.chip.unknown   { background: var(--ink-faint); }
+.chip.essential { background: var(--ink); }
+.chip.optional  { background: var(--ink-faint); }
+
+/* A panel that could not be filled says why, rather than sitting empty. */
+.unavailable {
+  padding: calc(var(--step) * 3);
+  border: 3px dashed var(--bad);
+  background: var(--screen);
+  color: var(--bad);
+  font-weight: 700;
+}
+.unavailable .why {
+  display: block;
+  margin-top: var(--step);
+  font-weight: 400;
+  color: var(--ink-soft);
+}
+
+.empty { color: var(--ink-soft); font-style: italic; }
+
+/* The tables carry service names, workflow names and error text: things the
+ * machine printed, which line up better and read as quoted when they are set
+ * in monospace. */
+table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 12px;
+  font-family: ui-monospace, "Cascadia Mono", "DejaVu Sans Mono", monospace;
+}
+th, td {
+  text-align: start;
+  padding: calc(var(--step) * 1.5) calc(var(--step) * 2);
+  border-bottom: 1px dashed var(--ink-faint);
+  white-space: nowrap;
+}
+th { text-transform: uppercase; font-size: 11px; letter-spacing: .08em; }
+
+/* The reason a run failed is the one cell that carries a sentence. It wraps
+ * instead of pushing the rest of the table off the side of a phone. */
+td.why {
+  white-space: normal;
+  color: var(--ink-soft);
+  max-width: 34ch;
+  overflow-wrap: anywhere;
+}
+
+footer {
+  margin-top: calc(var(--step) * 4);
+  color: var(--bezel-light);
+  font-size: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: calc(var(--step) * 2) calc(var(--step) * 4);
+}
+footer a { color: var(--screen); text-decoration: none; border-bottom: 1px dotted; }
+footer a:hover, footer a:focus-visible { color: var(--screen-lit); }
+footer .sponsor a { color: var(--warn); }
+
+/* The language switch. A link, not a control: it changes what the page says,
+ * and a page that says something different deserves its own address. */
+footer a.lang {
+  padding: 1px calc(var(--step) * 2);
+  border: 2px solid var(--outline);
+  border-bottom-width: 2px;
+  background: var(--bezel);
+  color: var(--screen-lit);
+}
+footer a.lang:hover, footer a.lang:focus-visible { background: var(--bezel-light); }
+
+:focus-visible { outline: 3px solid var(--warn); outline-offset: 2px; }
+
+/* The console is read on a phone as often as at a desk. */
+@media (max-width: 640px) {
+  body { padding: var(--step); }
+  .cabinet { padding: calc(var(--step) * 2); }
+  .screen { padding: calc(var(--step) * 2); }
+  .panels { grid-template-columns: 1fr; }
+}
+
+/* The model's view -------------------------------------------------------- */
+
+/* Each violation is a sentence, so the list wraps rather than scrolling. */
+.violations {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.violations li {
+  border-inline-start: 4px solid var(--bad);
+  padding: calc(var(--step) * 1.5) calc(var(--step) * 2);
+  margin-bottom: var(--step);
+  background: var(--screen-lit, #ffe8c0);
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}

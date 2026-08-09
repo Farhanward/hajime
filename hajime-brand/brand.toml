@@ -1,0 +1,49 @@
+# Who the system says it is.
+#
+# Every user-visible string that names a person, a place on the internet or the
+# system itself lives here and nowhere else. The boot screen, the login banner,
+# the message of the day, the desktop wallpaper and the web console all read
+# these values through the generator, so a change here reaches every surface in
+# one run instead of being hunted through six files.
+#
+# Nothing in this file is invented. An empty value is left empty and the
+# surfaces that would have shown it drop the line rather than print a
+# placeholder or a broken link.
+
+[system]
+name      = "Hajime OS"
+# The wordmark is drawn, not typed, so it carries no space.
+wordmark  = "HajimeOS"
+# はじめ, ابدأ and begin are the same word in three scripts, which is the whole
+# idea of the name. The tagline is that sentence and not a slogan about it.
+tagline_ja = "はじめ"
+tagline_ar = "ابدأ"
+tagline_en = "begin"
+version   = "1.0.0"
+
+[author]
+name   = "Farhan Al-Mutairi"
+github = "github.com/Farhanward"
+repo   = "github.com/Farhanward/hajime"
+
+[support]
+# GitHub Sponsors, confirmed enabled on the account. If this is ever emptied the
+# donate line disappears from every surface instead of pointing at a 404.
+url = "github.com/sponsors/Farhanward"
+
+# The ask, in both languages the system is read in. Light, and it does not
+# pretend the machine is starving: the machine is fine, the person maintaining
+# it is one man.
+ask_en = "One man, one server, no company behind it."
+ask_ar = "رجل واحد وخادم واحد، ولا شركة خلفهما."
+cta_en = "Sponsor a coffee, keep the fans quiet"
+cta_ar = "ادعمه بقهوة، تهدأ المراوح"
+
+[greeting]
+# Shown by the graphical splash. The console splash prints the English line
+# only: vt(4) has no bidirectional layout and no Arabic shaping, so Arabic on a
+# text console renders as disconnected letters in reverse order. Better to not
+# offer it there than to offer it broken.
+en = "Welcome to Hajime OS"
+ar = "أهلاً بك في نظام هاجيمي"
+ja = "ようこそ"

@@ -1,0 +1,20 @@
+[Desktop Entry]
+Type=Application
+Version=1.5
+Name=Terminal
+Name[ar]=الطرفية
+Comment=A shell, in the system's colours
+Comment[ar]=صدفة أوامر بألوان النظام
+Exec=xterm
+Icon=utilities-terminal
+Terminal=false
+Categories=System;TerminalEmulator;
+Keywords=shell;command;xterm;
+Keywords[ar]=صدفة;أوامر;
+
+# Which Lucide glyph stands for this launcher in the generated
+# artwork. An X- key is the standard way to carry something the
+# spec has no field for, and it keeps the picture and the panel
+# reading from one file: the mockup used to list six applications
+# while three shipped.
+X-Hajime-Icon=terminal

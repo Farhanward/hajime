@@ -1,0 +1,28 @@
+[package]
+name = "hajime-console"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "hajime-console"
+path = "src/main.rs"
+
+[lib]
+name = "hajime_console"
+path = "src/lib.rs"
+
+[dependencies]
+hajime-core = { path = "../hajime-core" }
+hajime-sys = { path = "../hajime-sys" }
+# The world model, for the panel that says what is structurally wrong rather
+# than only what is down. No cycle: the model depends on core and sys, not on
+# the console.
+hajime-model = { path = "../hajime-model" }
+tokio = { version = "1.38", features = ["full"] }
+axum = "0.7"
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+chrono = { version = "0.4", features = ["serde"] }

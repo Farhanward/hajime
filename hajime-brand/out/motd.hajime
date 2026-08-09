@@ -1,0 +1,11 @@
+Hajime OS 1.0.0 -- begin
+
+  github.com/Farhanward/hajime
+  built by Farhan Al-Mutairi
+
+  One man, one server, no company behind it.
+  Sponsor a coffee, keep the fans quiet: github.com/sponsors/Farhanward
+
+  hajimectl status     what is running
+  hajimectl check      what would stop it starting
+  http://127.0.0.1:8088/   the same, in a browser
